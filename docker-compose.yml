@@ -1,0 +1,22 @@
+﻿services:
+  mqtt:
+    image: eclipse-mosquitto:2
+    profiles: ["local-broker"]
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./mosquitto/config/mosquitto.conf:/mosquitto/config/mosquitto.conf
+    restart: unless-stopped
+
+  vitals-gen:
+    build: .
+    environment:
+      MQTT_URL: "${MQTT_URL:-mqtt://host.docker.internal:1883}"
+      MQTT_USER: "${MQTT_USER:-generator-client}"
+      MQTT_PASS: "${MQTT_PASS:-pass}"
+      MQTT_QOS: "${MQTT_QOS:-1}"
+      MQTT_RETAIN: "${MQTT_RETAIN:-false}"
+      INTERVAL_MS: "${INTERVAL_MS:-20000}"
+      MQTT_SOURCE_IDS: "${MQTT_SOURCE_IDS:-sim-01, 061, 072, 068, 065, 064, 066, 058, 060,}"
+      ENABLE_CONTROL_SUBSCRIPTION: "${ENABLE_CONTROL_SUBSCRIPTION:-true}"
+    restart: unless-stopped
