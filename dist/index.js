@@ -2,6 +2,14 @@ import mqtt from "mqtt";
 function pick(arr) {
     return arr[Math.floor(Math.random() * arr.length)];
 }
+/** Last field `as`: activity status for the receiver parser. */
+function activityStatusToAs(s) {
+    if (s === "resting")
+        return 1;
+    if (s === "walking" || s === "fast walk")
+        return 2;
+    return 3;
+}
 const BROKER_URL = process.env.MQTT_URL || "mqtt://localhost:1883";
 const INTERVAL_MS = Number(process.env.INTERVAL_MS || "20000");
 const MQTT_USER = process.env.MQTT_USER ?? process.env.MQTT_USERNAME ?? "generator-client";
@@ -31,11 +39,21 @@ function randFloat(min, max, decimals = 1) {
     const p = Math.pow(10, decimals);
     return Math.round(v * p) / p;
 }
+function toClockTime(d) {
+    return d.toISOString().slice(11, 19);
+}
+function toField(value) {
+    if (value === null || value === undefined)
+        return "";
+    if (typeof value === "number" && Number.isNaN(value))
+        return "";
+    return String(value);
+}
 function topicVitals(id) {
-    return `vitals/generator/${id}`;
+    return `in.vitals.gen/${id}`;
 }
 function topicControl(id) {
-    return `vitals/control/${id}`;
+    return `in.vitals.gen/control/${id}`;
 }
 const GREEN = {
     respRate: [12, 20],
@@ -122,10 +140,10 @@ client.on("connect", () => {
     console.log("✅ Connected to MQTT:", BROKER_URL);
     console.log(`📤 Publishing every ${INTERVAL_MS}ms for sources: ${SOURCE_IDS.join(", ")} (QoS=${MQTT_QOS}, retain=${MQTT_RETAIN})`);
     if (ENABLE_CONTROL_SUBSCRIPTION) {
-        client.subscribe("vitals/control/all");
+        client.subscribe("in.vitals.gen/control/all");
         for (const id of SOURCE_IDS)
             client.subscribe(topicControl(id));
-        console.log("🎛️ Listening on vitals/control/<sourceId> and vitals/control/all");
+        console.log("🎛️ Listening on in.vitals.gen/control/<sourceId> and in.vitals.gen/control/all");
     }
     else {
         console.log("🎛️ Control subscription disabled (ENABLE_CONTROL_SUBSCRIPTION=false)");
@@ -134,7 +152,7 @@ client.on("connect", () => {
 client.on("message", (topic, payload) => {
     if (!ENABLE_CONTROL_SUBSCRIPTION)
         return;
-    if (!topic.startsWith("vitals/control/"))
+    if (!topic.startsWith("in.vitals.gen/control/"))
         return;
     let msg;
     try {
@@ -166,30 +184,39 @@ client.on("message", (topic, payload) => {
 setInterval(() => {
     if (!client.connected)
         return;
-    const ts = new Date().toISOString();
+    const now = new Date();
+    const ts = now.toISOString();
+    const tsClock = toClockTime(now);
     for (const id of SOURCE_IDS) {
         const vitals = genVitals(id);
-        const payload = {
-            source: "generator",
-            sourceId: id,
-            hr: vitals.heartRate,
-            spo2: vitals.spO2,
-            rr: vitals.respRate,
-            ts,
-            vitals,
-            respAirCnd: pick(["clean", "dust", "smoke (light)"]),
-            mentalAlertness: pick(["focused", "alert", "stressed"]),
-            activityStatus: pick([
-                "resting",
-                "walking",
-                "running",
-                "engaged",
-                "taking cover",
-                "sprinting",
-                "fast walk",
-            ]),
-        };
-        client.publish(topicVitals(id), JSON.stringify(payload), {
+        const hmdId = Number(id);
+        const activity = pick([
+            "resting",
+            "walking",
+            "running",
+            "engaged",
+            "taking cover",
+            "sprinting",
+            "fast walk",
+        ]);
+        const as = activityStatusToAs(activity);
+        const payloadFields = [
+            tsClock,
+            Number.isNaN(hmdId) ? id : hmdId,
+            vitals.respRate,
+            100, // rrc
+            vitals.spO2,
+            100, // spo2c
+            vitals.heartRate,
+            95, // hrc
+            vitals.heartRateVar,
+            vitals.bpSystolic,
+            vitals.bpDiastolic,
+            vitals.temp,
+            as,
+        ];
+        const payload = payloadFields.map(toField).join(";");
+        client.publish(topicVitals(id), payload, {
             qos: MQTT_QOS,
             retain: MQTT_RETAIN,
         });
