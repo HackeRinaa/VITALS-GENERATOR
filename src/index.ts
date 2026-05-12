@@ -55,7 +55,7 @@ const MQTT_QOS = Number(process.env.MQTT_QOS || "1") as 0 | 1 | 2;
 const MQTT_RETAIN = (process.env.MQTT_RETAIN || "false").toLowerCase() === "true";
 const MQTT_RECONNECT_MS = Number(process.env.MQTT_RECONNECT_MS || "1500");
 const ENABLE_CONTROL_SUBSCRIPTION =
-  (process.env.ENABLE_CONTROL_SUBSCRIPTION || "false").toLowerCase() === "true";
+  (process.env.ENABLE_CONTROL_SUBSCRIPTION || "true").toLowerCase() === "true";
 
 const sourceIdsRaw =
   process.env.MQTT_SOURCE_IDS ||
@@ -92,11 +92,25 @@ function toField(value: unknown): string {
   return String(value);
 }
 
+/** Match control topic `.../60` to source id `060` in SOURCE_IDS. */
+function deviceKey(id: string): string {
+  const t = id.trim();
+  if (t === "") return t;
+  if (t.toLowerCase() === "all") return t;
+  const n = Number(t);
+  if (!Number.isNaN(n)) return String(n);
+  return t;
+}
+
+function parseZone(raw: unknown): Zone | undefined {
+  if (typeof raw !== "string") return undefined;
+  const u = raw.trim().toUpperCase();
+  if (u === "GREEN" || u === "YELLOW" || u === "RED") return u;
+  return undefined;
+}
+
 function topicVitals(id: string) {
   return `in.vitals.gen/${id}`;
-}
-function topicControl(id: string) {
-  return `in.vitals.gen/control/${id}`;
 }
 
 const GREEN: Record<NumericVitalKey, [number, number]> = {
@@ -151,7 +165,7 @@ type DeviceOverride = {
 const overrides = new Map<string, DeviceOverride>();
 
 function getOverride(id: string): DeviceOverride | undefined {
-  const ov = overrides.get(id);
+  const ov = overrides.get(deviceKey(id));
   if (!ov) return undefined;
   if (ov.expiresAt && Date.now() > ov.expiresAt) {
     overrides.delete(id);
@@ -202,9 +216,8 @@ client.on("connect", () => {
   );
 
   if (ENABLE_CONTROL_SUBSCRIPTION) {
-    client.subscribe("in.vitals.gen/control/all");
-    for (const id of SOURCE_IDS) client.subscribe(topicControl(id));
-    console.log("🎛️ Listening on in.vitals.gen/control/<sourceId> and in.vitals.gen/control/all");
+    client.subscribe("in.vitals.gen/control/+");
+    console.log("🎛️ Listening on in.vitals.gen/control/+ (e.g. .../60 or .../060, and .../all)");
   } else {
     console.log("🎛️ Control subscription disabled (ENABLE_CONTROL_SUBSCRIPTION=false)");
   }
@@ -222,23 +235,37 @@ client.on("message", (topic, payload) => {
     return;
   }
 
-  const target = topic.split("/")[2]; // all or deviceId
-  const expiresAt = msg.durationSec ? Date.now() + msg.durationSec * 1000 : undefined;
+  const parts = topic.split("/");
+  const target = parts[2] ?? "";
+  const expiresAt =
+    typeof msg.durationSec === "number" && msg.durationSec > 0
+      ? Date.now() + msg.durationSec * 1000
+      : undefined;
+  const zone = parseZone(msg.zone);
 
-  const applyTo = (id: string) => {
+  const applyTo = (rawId: string) => {
+    const key = deviceKey(rawId);
     if (msg.clear) {
-      overrides.delete(id);
+      overrides.delete(key);
       return;
     }
-    overrides.set(id, { zone: msg.zone, set: msg.set, expiresAt });
+    const prev = overrides.get(key);
+    const nextZone = zone ?? prev?.zone;
+    const nextSet = msg.set !== undefined ? msg.set : prev?.set;
+    const nextExpires = expiresAt !== undefined ? expiresAt : prev?.expiresAt;
+    if (nextZone === undefined && nextSet === undefined && nextExpires === undefined) {
+      console.log("🎚️ Control ignored (no zone, set, or duration):", msg);
+      return;
+    }
+    overrides.set(key, { zone: nextZone, set: nextSet, expiresAt: nextExpires });
   };
 
-  if (target === "all") {
+  if (target.toLowerCase() === "all") {
     for (const id of SOURCE_IDS) applyTo(id);
     console.log("🎚️ Control applied to ALL:", msg);
   } else {
     applyTo(target);
-    console.log(`🎚️ Control applied to ${target}:`, msg);
+    console.log(`🎚️ Control applied to ${deviceKey(target)}:`, msg);
   }
 });
 
