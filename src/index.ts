@@ -120,7 +120,7 @@ const GREEN: Record<NumericVitalKey, [number, number]> = {
   heartRateVar: [31, 80],
   bpSystolic: [100, 140],
   bpDiastolic: [60, 90],
-  temp: [36.0, 37.9],
+  temp: [31.0, 35.5],
   painScale: [1, 5],
 };
 
