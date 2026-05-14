@@ -79,7 +79,7 @@ const GREEN = {
     heartRateVar: [31, 80],
     bpSystolic: [100, 140],
     bpDiastolic: [60, 90],
-    temp: [36.0, 37.9],
+    temp: [31.0, 35.5],
     painScale: [1, 5],
 };
 const YELLOW = {
@@ -89,7 +89,7 @@ const YELLOW = {
     heartRateVar: [15, 30],
     bpSystolic: [90, 99],
     bpDiastolic: [50, 59],
-    temp: [38.0, 39.0],
+    temp: [28.0, 31.0],
     painScale: [6, 7],
 };
 const RED = {
@@ -99,7 +99,7 @@ const RED = {
     heartRateVar: [1, 14],
     bpSystolic: [60, 89],
     bpDiastolic: [30, 49],
-    temp: [39.1, 40.5],
+    temp: [37.0, 40.5],
     painScale: [8, 10],
 };
 function genFromRange(key, zone) {

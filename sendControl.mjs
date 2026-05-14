@@ -5,6 +5,14 @@
 const topic = process.argv[2] || "vitals/control/001";
 const msg = JSON.parse(process.argv[3] || '{"set":{"spO2":"RED"},"durationSec":60}');
 
+const isYellowTrigger =
+  msg?.zone === "YELLOW" ||
+  Object.values(msg?.set ?? {}).some((value) => value === "YELLOW");
+
+if (isYellowTrigger && typeof msg.limit !== "number") {
+  msg.limit = 1;
+}
+
 
 
 const client = mqtt.connect("mqtt://localhost:1883");
