@@ -60,8 +60,7 @@ const ENABLE_CONTROL_SUBSCRIPTION =
 const sourceIdsRaw =
   process.env.MQTT_SOURCE_IDS ||
   process.env.DEVICE_IDS ||
-  process.env.MQTT_SOURCE_ID ||
-  "061,072,068,065,064,066,058,060";
+  process.env.MQTT_SOURCE_ID || "072,065,064,066,058,060";
 const SOURCE_IDS = sourceIdsRaw
   .split(",")
   .map((s) => s.trim())
